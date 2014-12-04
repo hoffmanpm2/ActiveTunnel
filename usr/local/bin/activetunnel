@@ -1,0 +1,67 @@
+#!/bin/sh
+
+TUNNEL_SSH_OPTS=
+TUNNEL_SPECS=
+TUNNEL_USER=
+TUNNEL_HOSTNAME=
+TUNNEL_PIDFILE=
+TUNNEL_POLLFREQ=
+TUNNEL_POLLCOUNT=
+while getopts ":o:t:u:n:p:f:c:" opt
+do
+  case $opt in
+    o)
+      TUNNEL_SSH_OPTS="${OPTARG}"
+      ;;
+    t)
+      TUNNEL_SPECS="${OPTARG}"
+      ;;
+    u)
+      TUNNEL_USER="${OPTARG}"
+      ;;
+    n)
+      TUNNEL_HOSTNAME="${OPTARG}"
+      ;;
+    p)
+      TUNNEL_PIDFILE="${OPTARG}"
+      ;;
+    f)
+      TUNNEL_POLLFREQ="${OPTARG}"
+      ;;
+    c)
+      TUNNEL_POLLCOUNT="${OPTARG}"
+      ;;
+    \?)
+      echo "Invalid option: -$OPTARG" >&2
+      ;;
+  esac
+done
+shift $((OPTIND-1))
+
+while true
+do
+  # Is the process running? Yes, sleep 60. No, (re)start the SSH tunnel.
+  if [ -f "${TUNNEL_PIDFILE}" ] && (pgrep -F "${TUNNEL_PIDFILE}" >/dev/null); then
+    sleep ${TUNNEL_POLLFREQ}
+  else
+    # Delete the PID file if it exists.
+    if [ -f "${TUNNEL_PIDFILE}" ]; then
+      rm "${TUNNEL_PIDFILE}"
+    fi
+
+    # Execute SSH command
+    if [ -z "${TUNNEL_USER}" ]; then
+      ssh ${TUNNEL_SSH_OPTS} -N -R ${TUNNEL_SPECS} ${TUNNEL_HOSTNAME} &
+    else
+      ssh ${TUNNEL_SSH_OPTS} -N -R ${TUNNEL_SPECS} ${TUNNEL_USER}@${TUNNEL_HOSTNAME} &
+    fi
+
+    # If SSH Tunnel created successfully, create PID file. Otherwise, sleep for 60 seconds.
+    if [ $? -eq 0 ]; then
+      echo $! > "${TUNNEL_PIDFILE}"
+      sleep $(expr ${TUNNEL_POLLCOUNT} \* ${TUNNEL_POLLFREQ})
+    else
+      sleep ${TUNNEL_POLLFREQ}
+    fi
+  fi
+done
