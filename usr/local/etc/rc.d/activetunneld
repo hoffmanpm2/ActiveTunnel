@@ -1,0 +1,75 @@
+#!/bin/sh
+# Created by: Philip Hoffman <hoffmanpm2@gmail.com>
+# PROVIDE: activetunneld
+# REQUIRE: LOGIN
+# KEYWORD: shutdown
+
+. /etc/rc.subr
+
+name="activetunneld"
+rcvar=activetunneld_enable
+
+extra_commands="status"
+start_cmd="${name}_start"
+stop_cmd="${name}_stop"
+status_cmd="${name}_status"
+pidfile="/var/run/${name}.pid"
+
+load_rc_config $name
+  : ${activetunneld_enable:=no}
+  : ${activetunneld_ssh_opts=""}
+  : ${activetunneld_specs="8822:localhost:22"}
+  : ${activetunneld_user=""}
+  : ${activetunneld_hostname="localhost"}
+  : ${activetunneld_tunnel_pidfile="/var/run/tunnel.pid"}
+  : ${activetunneld_tunnel_pollfreq="60"}
+  : ${activetunneld_tunnel_maxpollcount="5"}
+
+activetunneld_start()
+{
+  if [ -f "${pidfile}" ] && (pgrep -F "${pidfile}" >/dev/null); then
+    echo "ActiveTunnel is already running (Process ID: $(cat "${pidfile}")).";
+  else
+    echo "Starting ActiveTunnel."
+    if [ -z "${activetunneld_ssh_opts}" ]; then
+      if [ -z "${activetunneld_user}" ]; then
+        /usr/local/bin/activetunnel -t "${activetunneld_specs}" -n "${activetunneld_hostname}" -p "${activetunneld_tunnel_pidfile}" -f "${activetunneld_tunnel_pollfreq}" -c "${activetunneld_tunnel_maxpollcount}" &
+      else
+        /usr/local/bin/activetunnel -t "${activetunneld_specs}" -u "${activetunneld_user}" -n "${activetunneld_hostname}" -p "${activetunneld_tunnel_pidfile}" -f "${activetunneld_tunnel_pollfreq}" -c "${activetunneld_tunnel_maxpollcount}" &
+      fi
+    else
+      if [ -z "${activetunneld_user}" ]; then
+        /usr/local/bin/activetunnel -o "${activetunneld_ssh_opts}" -t "${activetunneld_specs}" -n "${activetunneld_hostname}" -p "${activetunneld_tunnel_pidfile}" -f "${activetunneld_tunnel_pollfreq}" -c "${activetunneld_tunnel_maxpollcount}" &
+      else
+        /usr/local/bin/activetunnel -o "${activetunneld_ssh_opts}" -t "${activetunneld_specs}" -u "${activetunneld_user}" -n "${activetunneld_hostname}" -p "${activetunneld_tunnel_pidfile}" -f "${activetunneld_tunnel_pollfreq}" -c "${activetunneld_tunnel_maxpollcount}" &
+      fi
+    fi
+    echo $! > $pidfile
+  fi
+}
+
+activetunneld_stop()
+{
+  if [ -f "${pidfile}" ] && (pgrep -F "${pidfile}" >/dev/null); then
+    activetunneld_pid=$(cat "${pidfile}");
+    activetunneld_childpids=$(pgrep -P ${activetunneld_pid});
+    kill ${sig_stop} ${activetunneld_pid} ${activetunneld_childpids};
+    wait_for_pids ${activetunneld_pid} ${activetunneld_childpids};
+    rm "${pidfile}" "${activetunneld_tunnel_pidfile}"
+  else
+    echo "ActiveTunnel is not running.";
+    exit 1;
+  fi
+}
+
+activetunneld_status()
+{
+  if [ -f "${pidfile}" ] && (pgrep -F "${pidfile}" >/dev/null); then
+    echo "ActiveTunnel is running (Process ID: $(cat "${pidfile}")).";
+  else
+    echo "ActiveTunnel is not running.";
+    exit 1;
+  fi
+}
+
+run_rc_command "$1"
